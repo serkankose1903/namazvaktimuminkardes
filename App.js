@@ -203,6 +203,23 @@ export default function App() {
     requestAdTracking();
   }, []);
 
+  // iOS Global Audio Mode Yapılandırması (Sessiz mod ve arka plan desteği)
+  useEffect(() => {
+    const initAudioMode = async () => {
+      try {
+        await setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          shouldPlayInBackground: true,
+          allowsRecordingIOS: false,
+        });
+        console.log('Global Audio Mode başarıyla yapılandırıldı.');
+      } catch (e) {
+        console.warn('Global Audio Mode hatası:', e);
+      }
+    };
+    initAudioMode();
+  }, []);
+
   // Uygulama Açılış Reklamı (App Open Ad) Entegrasyonu
   useEffect(() => {
     if (!isAdmobAvailable || !AppOpenAd || !AdEventType || !TestIds) return;
@@ -489,7 +506,8 @@ export default function App() {
       // iOS sessiz modunda dahi ses çalabilmek için audio session'u ayarla
       await setAudioModeAsync({
         playsInSilentModeIOS: true,
-        shouldPlayInBackground: false,
+        shouldPlayInBackground: true,
+        allowsRecordingIOS: false,
       });
 
       if (player) {
