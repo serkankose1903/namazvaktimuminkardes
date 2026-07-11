@@ -292,13 +292,15 @@ export default function App() {
 
   // API'den Namaz Vakitlerini Çek (Diyanet Metodu: 13)
   useEffect(() => {
+    let active = true;
+
     const fetchPrayerTimes = async () => {
       setLoading(true);
       try {
         const response = await fetch(`https://api.aladhan.com/v1/timingsByCity?city=${city}&country=${country}&method=13`);
         const json = await response.json();
         
-        if (json.code === 200) {
+        if (active && json.code === 200) {
           const timings = json.data.timings;
           // Sadece ihtiyacımız olan vakitleri filtrele
           const filteredTimes = {
@@ -312,12 +314,21 @@ export default function App() {
           setPrayerTimes(filteredTimes);
         }
       } catch (error) {
-        console.error("Vakitler çekilemedi:", error);
+        if (active) {
+          console.error("Vakitler çekilemedi:", error);
+        }
       }
-      setLoading(false);
+      if (active) {
+        setLoading(false);
+      }
     };
 
+    // Eğer AsyncStorage'dan henüz yükleme bitmediyse ve varsayılan Istanbul yerine başka bir şehir varsa çakışmayı önle
     fetchPrayerTimes();
+
+    return () => {
+      active = false;
+    };
   }, [city, country]);
 
   // Bildirim izni al ve Android kanalını kur
