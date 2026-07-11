@@ -1,24 +1,77 @@
 {
   "expo": {
-    "name": "kuranVakti",
-    "slug": "kuranVakti",
+    "name": "Namaz Vakti Mümin Kardeş",
+    "slug": "namaz-vakti-mumin-kardes",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.serkan.namazvaktimuminkardes",
+      "buildNumber": "2",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0F172A",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "com.google.android.gms.permission.AD_ID"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "plugins": [
+      "expo-audio",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0F172A",
+          "sounds": [
+            "./assets/ezan.mp3"
+          ]
+        }
+      ],
+      "expo-font",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-5110586926092452~1715522449",
+          "iosAppId": "ca-app-pub-5110586926092452~1715522449"
+        }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "Bu tanımlayıcı, size daha alakalı ve kişiselleştirilmiş reklamlar sunmak amacıyla kullanılacaktır."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e9ca51b0-bf97-4332-8f74-edf960dde348"
+      }
     }
+  },
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-5110586926092452~1715522449",
+    "ios_app_id": "ca-app-pub-5110586926092452~1715522449"
   }
 }
