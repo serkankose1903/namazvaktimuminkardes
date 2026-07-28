@@ -2,14 +2,14 @@
   "expo": {
     "name": "Namaz Vakti Mümin Kardeş",
     "slug": "namaz-vakti-mumin-kardes",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.serkan.namazvaktimuminkardes",
-      "buildNumber": "4",
+      "buildNumber": "12",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
@@ -41,29 +41,29 @@
       "backgroundColor": "#0F172A"
     },
     "plugins": [
-      "expo-audio",
       [
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
           "color": "#0F172A",
           "sounds": [
-            "./assets/ezan.mp3"
+            "./assets/ezan_short.wav"
           ]
         }
       ],
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": true
+        }
+      ],
       "expo-font",
+      "expo-sensors",
       [
         "react-native-google-mobile-ads",
         {
           "androidAppId": "ca-app-pub-5110586926092452~1715522449",
           "iosAppId": "ca-app-pub-5110586926092452~1715522449"
-        }
-      ],
-      [
-        "expo-tracking-transparency",
-        {
-          "userTrackingPermission": "Bu tanımlayıcı, size daha alakalı ve kişiselleştirilmiş reklamlar sunmak amacıyla kullanılacaktır."
         }
       ]
     ],

@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, ScrollView, FlatList, Modal, TextInput, TouchableOpacity, Platform, StatusBar, ActivityIndicator, Linking, KeyboardAvoidingView } from 'react-native';
-import { useAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import { StyleSheet, Text, View, ScrollView, FlatList, Modal, TextInput, TouchableOpacity, Platform, StatusBar, ActivityIndicator, Linking, KeyboardAvoidingView, AppState } from 'react-native';
+import { useAudioPlayer, setAudioModeAsync, useAudioPlayerStatus } from 'expo-audio';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts, Nunito_400Regular, Nunito_600SemiBold, Nunito_700Bold, Nunito_300Light } from '@expo-google-fonts/nunito';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as Device from 'expo-device';
-import { requestTrackingPermissionsAsync } from 'expo-tracking-transparency';
 
+// Yeni Özellik Bileşenleri
+import QiblaCompass from './components/QiblaCompass';
+import DailyHadith from './components/DailyHadith';
+import MissedPrayerTracker from './components/MissedPrayerTracker';
 
 
 // Google AdMob Reklam Modülü (Expo Go çökmesini önlemek için korumalı import)
@@ -159,6 +162,41 @@ const CITIES = [
   { name: 'Stockholm', displayName: 'Stokholm', country: 'Sweden' },
 ];
 
+// Hicri özel günler (Hicri ay-gün eşleşmesi)
+const SPECIAL_ISLAMIC_DAYS = [
+  { month: 1, day: 1, title: '🎉 Hicri Yılbaşı', desc: 'Hicri yeni yılın ilk günü. Hayırlı olsun!' },
+  { month: 1, day: 10, title: '🕌 Aşure Günü', desc: 'Muharrem ayının 10. günü. Oruç tutmak sünnettir.' },
+  { month: 3, day: 12, title: '🌙 Mevlid Kandili', desc: 'Peygamber Efendimizin (s.a.v.) doğum günü.' },
+  { month: 7, day: 27, title: '✨ Regaip Kandili', desc: 'Üç ayların başlangıcı. Mübarek Regaip gecesi.' },
+  { month: 8, day: 15, title: '🌟 Berat Kandili', desc: 'Günahların affedildiği mübarek gece.' },
+  { month: 9, day: 1, title: '🌙 Ramazan Başlangıcı', desc: 'Mübarek Ramazan ayının ilk günü. Hayırlı Ramazanlar!' },
+  { month: 9, day: 27, title: '💫 Kadir Gecesi', desc: 'Bin aydan hayırlı olan Kadir Gecesi.' },
+  { month: 10, day: 1, title: '🎊 Ramazan Bayramı', desc: 'Ramazan Bayramının 1. günü. Bayramınız mübarek olsun!' },
+  { month: 10, day: 2, title: '🎊 Ramazan Bayramı', desc: 'Ramazan Bayramının 2. günü.' },
+  { month: 10, day: 3, title: '🎊 Ramazan Bayramı', desc: 'Ramazan Bayramının 3. günü.' },
+  { month: 12, day: 9, title: '🕋 Arefe Günü', desc: 'Kurban Bayramı arifesi. Arefe günü orucu sünnettir.' },
+  { month: 12, day: 10, title: '🐑 Kurban Bayramı', desc: 'Kurban Bayramının 1. günü. Bayramınız mübarek olsun!' },
+  { month: 12, day: 11, title: '🐑 Kurban Bayramı', desc: 'Kurban Bayramının 2. günü.' },
+  { month: 12, day: 12, title: '🐑 Kurban Bayramı', desc: 'Kurban Bayramının 3. günü.' },
+  { month: 12, day: 13, title: '🐑 Kurban Bayramı', desc: 'Kurban Bayramının 4. günü.' },
+];
+
+// Hicri ay isimleri
+const HIJRI_MONTHS = {
+  1: 'Muharrem',
+  2: 'Safer',
+  3: 'Rebîülevvel',
+  4: 'Rebîülâhir',
+  5: 'Cemâziyelevvel',
+  6: 'Cemâziyelâhir',
+  7: 'Recep',
+  8: 'Şâban',
+  9: 'Ramazan',
+  10: 'Şevval',
+  11: 'Zilkade',
+  12: 'Zilhicce',
+};
+
 export default function App() {
   const [fontsLoaded] = useFonts({
     Nunito_300Light,
@@ -175,47 +213,50 @@ export default function App() {
   const [nextPrayer, setNextPrayer] = useState({ name: '', time: '' });
   const [isCityLoaded, setIsCityLoaded] = useState(false);
 
-  // iOS App Tracking Transparency (ATT) & AdMob Başlatma
-  useEffect(() => {
-    const requestAdTracking = async () => {
-      try {
-        // İzin iste (iOS için zorunlu modalı açar)
-        const { status } = await requestTrackingPermissionsAsync();
-        if (status === 'granted') {
-          console.log('Reklam takip izni verildi.');
-        } else {
-          console.log('Reklam takip izni reddedildi veya desteklenmiyor.');
-        }
-      } catch (e) {
-        console.warn('ATT İzin isteme hatası:', e);
-      }
+  // Hicri Takvim State
+  const [hijriDate, setHijriDate] = useState(null);
+  const [specialDay, setSpecialDay] = useState(null);
 
-      // AdMob SDK'sını başlat
+  // Zikirmatik State
+  const [isZikirmatikVisible, setIsZikirmatikVisible] = useState(false);
+  const [zikirCount, setZikirCount] = useState(0);
+  const [zikirTarget, setZikirTarget] = useState(33);
+  const [selectedZikir, setSelectedZikir] = useState('Sübhanallah');
+
+  // Yeni Özellik Modalleri
+  const [isQiblaVisible, setIsQiblaVisible] = useState(false);
+  const [isMissedPrayerVisible, setIsMissedPrayerVisible] = useState(false);
+
+  // AdMob Başlatma (ATT KALDIRILDI - yalnızca kişiselleştirilmemiş reklamlar)
+  useEffect(() => {
+    const initAds = async () => {
       if (isAdmobAvailable && mobileAds) {
         try {
           await mobileAds().initialize();
-          console.log('Google Mobile Ads SDK başarıyla başlatıldı.');
+          console.log('Google Mobile Ads SDK başarıyla başlatıldı (kişiselleştirilmemiş).');
         } catch (adError) {
           console.warn('AdMob SDK başlatma hatası:', adError);
         }
       }
     };
-
-    requestAdTracking();
+    initAds();
   }, []);
 
-  // iOS Global Audio Mode Yapılandırması (Sessiz mod ve arka plan desteği)
+  // iOS Global Audio Mode: AVAudioSession kategorisini Playback'e zorunlu kiliti
+  // interruptionMode:'doNotMix' iOS'ta category=playback'i native düzeyde zorlar
+  // Bu sayede sessiz mod anahtarı ve diğer uygulamalar (AdMob dahil) devre dışı kalır
   useEffect(() => {
     const initAudioMode = async () => {
       try {
         await setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          shouldPlayInBackground: true,
-          allowsRecordingIOS: false,
+          playsInSilentMode: true,
+          interruptionMode: 'doNotMix',
+          staysActiveInBackground: true,
+          allowsRecording: false,
         });
-        console.log('Global Audio Mode başarıyla yapılandırıldı.');
+        console.log('Global Audio Mode başarıyla yapılandırıldı (doNotMix + playsInSilentMode).');
       } catch (e) {
-        console.warn('Global Audio Mode hatası:', e);
+        console.warn('Global Audio Mode hatası:', e?.message || e);
       }
     };
     initAudioMode();
@@ -258,7 +299,8 @@ export default function App() {
   const [cityDisplay, setCityDisplay] = useState('İstanbul');
   const lastPlayedPrayer = useRef(null);
   const searchInputRef = useRef(null);
-  const player = useAudioPlayer(require('./assets/ezan.mp3'), 200);
+  const player = useAudioPlayer(require('./assets/ezan.mp3'));
+  const playerStatus = useAudioPlayerStatus(player);
 
   // AsyncStorage'dan kaydedilmiş şehri yükle
   useEffect(() => {
@@ -319,6 +361,25 @@ export default function App() {
             Isha: timings.Isha,
           };
           setPrayerTimes(filteredTimes);
+
+          // Hicri tarihi al
+          if (json.data.date && json.data.date.hijri) {
+            const h = json.data.date.hijri;
+            setHijriDate({
+              day: h.day,
+              month: parseInt(h.month.number),
+              monthName: HIJRI_MONTHS[parseInt(h.month.number)] || h.month.en,
+              year: h.year,
+            });
+
+            // Özel gün kontrolü
+            const hijriMonth = parseInt(h.month.number);
+            const hijriDay = parseInt(h.day);
+            const found = SPECIAL_ISLAMIC_DAYS.find(
+              (d) => d.month === hijriMonth && d.day === hijriDay
+            );
+            setSpecialDay(found || null);
+          }
         }
       } catch (error) {
         if (active) {
@@ -351,6 +412,29 @@ export default function App() {
     setupNotifications();
   }, []);
 
+  // Bildirim tıklama veya uygulama ön plana gelme durumunda ezanı senkronize çalma dinleyicileri
+  useEffect(() => {
+    // 1. Bildirime tıklandığında tetiklenen dinleyici
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('Bildirime tıklandı, ezan kaldığı yerden senkronize ediliyor...');
+      playAdhanFromCurrentOffset();
+    });
+
+    // 2. Uygulama arka plandan ön plana (aktif duruma) geçtiğinde tetiklenen dinleyici
+    const handleAppStateChange = (nextAppState) => {
+      if (nextAppState === 'active') {
+        console.log('Uygulama aktif oldu, ezan kontrolü yapılıyor...');
+        playAdhanFromCurrentOffset();
+      }
+    };
+    const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      responseSubscription.remove();
+      appStateSubscription.remove();
+    };
+  }, [prayerTimes]);
+
   // Push Bildirim Kayıt ve Yetkilendirme Yardımcı Fonksiyonu
   const registerForPushNotificationsAsync = async () => {
     let token;
@@ -359,7 +443,7 @@ export default function App() {
       await Notifications.setNotificationChannelAsync('ezan-channel', {
         name: 'Ezan Bildirimleri',
         importance: Notifications.AndroidImportance.MAX,
-        sound: 'ezan.mp3',
+        sound: 'ezan_short.wav',
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#F59E0B',
       });
@@ -422,10 +506,10 @@ export default function App() {
       await Notifications.scheduleNotificationAsync({
         content: {
           title: `🕌 ${PRAYER_NAMES_TR[key]} Vakti`,
-          body: 'Namaz vakti girdi. Hayırlı olsun.',
+          body: 'Namaz vakti geldi. Hayırlı olsun.',
           // Not: Özel ezan sesi native build'de çalışır.
           // Expo Go'da sistem sesi kullanılır; gerçek ezan için eas build gerekir.
-          sound: true,
+          sound: 'ezan_short.wav',
           ...(Platform.OS === 'android' && { channelId: 'ezan-channel' }),
         },
         trigger: {
@@ -518,30 +602,90 @@ export default function App() {
     }
   };
 
-  async function playAdhan() {
+  // En yakın vakitten geçen saniyeyi hesaplayıp ezanı o süreden başlatan akıllı fonksiyon
+  const playAdhanFromCurrentOffset = () => {
+    if (!prayerTimes) return;
+    
+    const now = new Date();
+    let closestKey = null;
+    let minDiffMs = Infinity;
+
+    for (const key of PRAYER_KEYS) {
+      const [hours, minutes] = prayerTimes[key].split(':').map(Number);
+      const prayerDate = new Date(now);
+      prayerDate.setHours(hours, minutes, 0, 0);
+
+      const diffMs = now.getTime() - prayerDate.getTime();
+
+      // Son 2.5 dakika (150.000 ms) içerisinde başlamış bir vakit mi?
+      if (diffMs >= 0 && diffMs < 150000) {
+        if (diffMs < minDiffMs) {
+          minDiffMs = diffMs;
+          closestKey = key;
+        }
+      }
+    }
+
+    if (closestKey && minDiffMs < 150000) {
+      const offsetSeconds = Math.floor(minDiffMs / 1000);
+      console.log(`⏰ Kalan Yerden Başlatılıyor: Vakit: ${closestKey}, Ofset: ${offsetSeconds} saniye`);
+      
+      // Timer'ın ön planda tekrar sıfırdan çalmasını engellemek için kilidi koy
+      const currentHHMM = prayerTimes[closestKey];
+      lastPlayedPrayer.current = `${closestKey}-${currentHHMM}`;
+      
+      playAdhan(offsetSeconds);
+    }
+  };
+
+  async function playAdhan(seekOffset = 0) {
     try {
-      // iOS sessiz modunda dahi ses çalabilmek için audio session'u ayarla
+      // Her çalmadan önce audio session'u yeniden Playback kategorisine al
+      // AdMob gibi SDK'lar audio session'u sıfırlayabilir, bu yüzden her seferinde set et
       await setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        shouldPlayInBackground: true,
-        allowsRecordingIOS: false,
+        playsInSilentMode: true,
+        interruptionMode: 'doNotMix',
+        staysActiveInBackground: true,
+        allowsRecording: false,
       });
 
       if (player) {
-        // Eğer ses zaten çalıyorsa durdurup baştan başlat
         if (player.playing) {
           player.pause();
         }
-        player.seekTo(0);
+        player.seekTo(seekOffset);
         player.play();
-        console.log('Ezan başarıyla tetiklendi.');
+        console.log(`Ezan başarıyla tetiklendi (seekOffset: ${seekOffset} sn)`);
       } else {
         console.warn('Ses oynatıcı hazır değil.');
       }
     } catch (error) {
-      console.error('Ses hatası:', JSON.stringify(error));
+      console.error('Ses hatası:', error?.message || error);
     }
   }
+
+  // Ezanı manuel olarak susturma / durdurma fonksiyonu
+  const stopAdhan = () => {
+    try {
+      if (player) {
+        player.pause();
+        console.log('Ezan durduruldu.');
+      }
+    } catch (error) {
+      console.error('Ezan durdurma hatası:', error?.message || error);
+    }
+  };
+
+  // Zikirmatik seçenekleri
+  const ZIKIR_OPTIONS = [
+    { name: 'Sübhanallah', target: 33 },
+    { name: 'Elhamdülillah', target: 33 },
+    { name: 'Allahü Ekber', target: 33 },
+    { name: 'Lâ ilâhe illallah', target: 100 },
+    { name: 'Estağfirullah', target: 100 },
+    { name: 'Salavat', target: 100 },
+    { name: 'Serbest', target: 0 },
+  ];
 
   if (!fontsLoaded || loading) {
     return (
@@ -558,25 +702,51 @@ export default function App() {
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Başlık ve Tarih */}
+        {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit>Namaz Vakti Mümin Kardeş</Text>
+          <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit>Namaz Vakti</Text>
+          <Text style={styles.headerTitle}>Mümin Kardeş</Text>
           <Text style={styles.dateText}>
             {currentTime.toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </Text>
+
+          {/* Hicri Tarih */}
+          {hijriDate && (
+            <Text style={styles.hijriDateText}>
+              {hijriDate.day} {hijriDate.monthName} {hijriDate.year} Hicrî
+            </Text>
+          )}
+
           <TouchableOpacity style={styles.cityBadge} onPress={() => setShowCityModal(true)}>
             <Text style={styles.cityText}>📍 {cityDisplay}  ✎</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Özel Gün Kartı */}
+        {specialDay && (
+          <View style={styles.specialDayCard}>
+            <Text style={styles.specialDayTitle}>{specialDay.title}</Text>
+            <Text style={styles.specialDayText}>{specialDay.desc}</Text>
+          </View>
+        )}
 
         {/* Geri Sayım Kartı */}
         <View style={styles.countdownCard}>
           <Text style={styles.nextPrayerLabel}>SONRAKİ VAKİT · {PRAYER_NAMES_TR[nextPrayer.name]}</Text>
           <Text style={styles.countdownTime}>{remainingTimeStr}</Text>
           <Text style={styles.remainingText}>Kaldı</Text>
-          <TouchableOpacity style={styles.playButton} onPress={playAdhan}>
-            <Text style={styles.playButtonText}>Ezanı Dinle</Text>
-          </TouchableOpacity>
+          {playerStatus?.playing ? (
+            <TouchableOpacity style={[styles.playButton, styles.stopButton]} onPress={stopAdhan}>
+              <Text style={styles.playButtonText}>⏹ Ezanı Durdur</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.playButton} onPress={() => playAdhan(0)}>
+              <Text style={styles.playButtonText}>🔊 Ezanı Dinle</Text>
+            </TouchableOpacity>
+          )}
+          <Text style={styles.bgAudioHint}>
+            Ezan arka planda da çalmaya devam eder
+          </Text>
         </View>
 
         {/* Vakitler Listesi */}
@@ -593,10 +763,46 @@ export default function App() {
           ))}
         </View>
 
+        {/* Araçlar Bölümü */}
+        <View style={styles.toolsSection}>
+          <Text style={styles.toolsSectionTitle}>🛠 Araçlar</Text>
+          <View style={styles.toolsGrid}>
+            {/* Kıble Pusulası */}
+            <TouchableOpacity 
+              style={styles.toolCard}
+              onPress={() => setIsQiblaVisible(true)}
+            >
+              <Text style={styles.toolCardEmoji}>🧭</Text>
+              <Text style={styles.toolCardTitle}>Kıble{'\n'}Pusulası</Text>
+            </TouchableOpacity>
+
+            {/* Zikirmatik */}
+            <TouchableOpacity 
+              style={styles.toolCard}
+              onPress={() => setIsZikirmatikVisible(true)}
+            >
+              <Text style={styles.toolCardEmoji}>📿</Text>
+              <Text style={styles.toolCardTitle}>Zikirmatik{'\n'}Tesbih</Text>
+            </TouchableOpacity>
+
+            {/* Kaza Namazı */}
+            <TouchableOpacity 
+              style={styles.toolCard}
+              onPress={() => setIsMissedPrayerVisible(true)}
+            >
+              <Text style={styles.toolCardEmoji}>✅</Text>
+              <Text style={styles.toolCardTitle}>Kaza{'\n'}Takip</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Günün Hadisi */}
+        <DailyHadith />
+
         {/* Gizlilik Politikası Bağlantısı (App Store Review için) */}
         <TouchableOpacity 
           style={styles.privacyLinkContainer}
-          onPress={() => Linking.openURL('https://sites.google.com/view/namaz-vakti-mumin-kardes/ana-sayfa')}
+          onPress={() => Linking.openURL('https://serkankose1903.github.io/privacy.html')}
         >
           <Text style={styles.privacyLinkText}>Gizlilik Politikası</Text>
         </TouchableOpacity>
@@ -655,6 +861,7 @@ export default function App() {
             <FlatList
               data={filteredCities}
               keyExtractor={(item) => `${item.name}-${item.country}`}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[
@@ -679,6 +886,106 @@ export default function App() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {/* Zikirmatik Modal (Geliştirilmiş) */}
+      <Modal
+        visible={isZikirmatikVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsZikirmatikVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { height: '75%', justifyContent: 'space-between' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>📿 Zikirmatik</Text>
+              <TouchableOpacity onPress={() => setIsZikirmatikVisible(false)}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Zikir Seçenekleri */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.zikirOptionsScroll}>
+              <View style={styles.zikirOptionsRow}>
+                {ZIKIR_OPTIONS.map((option) => (
+                  <TouchableOpacity
+                    key={option.name}
+                    style={[
+                      styles.zikirOptionBtn,
+                      selectedZikir === option.name && styles.zikirOptionBtnActive,
+                    ]}
+                    onPress={() => {
+                      setSelectedZikir(option.name);
+                      setZikirTarget(option.target);
+                      setZikirCount(0);
+                    }}
+                  >
+                    <Text style={[
+                      styles.zikirOptionText,
+                      selectedZikir === option.name && styles.zikirOptionTextActive,
+                    ]}>
+                      {option.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+            
+            <View style={styles.zikirmatikCenter}>
+              <Text style={styles.selectedZikirName}>{selectedZikir}</Text>
+              <Text style={styles.zikirCountText}>{zikirCount}</Text>
+              {zikirTarget > 0 && (
+                <View style={styles.zikirProgressContainer}>
+                  <View style={styles.zikirProgressBar}>
+                    <View 
+                      style={[
+                        styles.zikirProgressFill, 
+                        { width: `${Math.min(100, (zikirCount / zikirTarget) * 100)}%` }
+                      ]} 
+                    />
+                  </View>
+                  <Text style={styles.zikirProgressText}>
+                    {zikirCount >= zikirTarget ? '✅ Tamamlandı!' : `${zikirTarget - zikirCount} kaldı`}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.zikirmatikButtons}>
+              <TouchableOpacity 
+                style={styles.zikirResetBtn}
+                onPress={() => setZikirCount(0)}
+              >
+                <Text style={styles.zikirResetBtnText}>Sıfırla</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[
+                  styles.zikirTapBtn,
+                  zikirTarget > 0 && zikirCount >= zikirTarget && styles.zikirTapBtnComplete,
+                ]}
+                activeOpacity={0.7}
+                onPress={() => setZikirCount(prev => prev + 1)}
+              >
+                <Text style={styles.zikirTapBtnText}>SAY</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Kıble Pusulası Modal */}
+      <QiblaCompass 
+        visible={isQiblaVisible} 
+        onClose={() => setIsQiblaVisible(false)} 
+        cityName={city}
+      />
+
+      {/* Kaza Namazı Takip Modal */}
+      <MissedPrayerTracker 
+        visible={isMissedPrayerVisible} 
+        onClose={() => setIsMissedPrayerVisible(false)} 
+      />
+
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -712,6 +1019,13 @@ const styles = StyleSheet.create({
     marginTop: 5,
     fontFamily: 'Nunito_400Regular',
   },
+  hijriDateText: {
+    fontSize: 13,
+    color: '#F59E0B',
+    marginTop: 3,
+    fontFamily: 'Nunito_600SemiBold',
+    opacity: 0.8,
+  },
   cityBadge: {
     marginTop: 10,
     backgroundColor: 'rgba(255,255,255,0.1)',
@@ -738,12 +1052,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#F59E0B',
     marginBottom: 10,
+    fontFamily: 'Nunito_700Bold',
   },
   specialDayText: {
     fontSize: 14,
     color: '#E2E8F0',
     textAlign: 'center',
     lineHeight: 22,
+    fontFamily: 'Nunito_400Regular',
   },
   countdownCard: {
     backgroundColor: '#1E293B',
@@ -784,11 +1100,20 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 30,
   },
+  stopButton: {
+    backgroundColor: '#EF4444', 
+  },
   playButtonText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 16,
     fontFamily: 'Nunito_700Bold',
+  },
+  bgAudioHint: {
+    color: '#475569',
+    fontSize: 11,
+    marginTop: 8,
+    fontFamily: 'Nunito_400Regular',
   },
   timesContainer: {
     backgroundColor: '#1E293B',
@@ -824,6 +1149,42 @@ const styles = StyleSheet.create({
   activeTimeText: {
     color: '#10B981', 
     fontWeight: 'bold',
+  },
+  // Araçlar Bölümü
+  toolsSection: {
+    marginTop: 20,
+  },
+  toolsSectionTitle: {
+    fontSize: 17,
+    color: '#CBD5E1',
+    fontWeight: '600',
+    fontFamily: 'Nunito_600SemiBold',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  toolsGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  toolCard: {
+    flex: 1,
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  toolCardEmoji: {
+    fontSize: 28,
+    marginBottom: 8,
+  },
+  toolCardTitle: {
+    fontSize: 12,
+    color: '#CBD5E1',
+    textAlign: 'center',
+    fontFamily: 'Nunito_600SemiBold',
+    lineHeight: 16,
   },
   // Modal stilleri
   modalOverlay: {
@@ -930,9 +1291,119 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
   },
   emptyListText: {
-    color: '#64748B',
-    fontSize: 15,
-    fontFamily: 'Nunito_400Regular',
+    color: '#94A3B8',
     textAlign: 'center',
+    fontSize: 16,
+    fontFamily: 'Nunito_400Regular',
+  },
+  // Zikirmatik Stilleri (Geliştirilmiş)
+  zikirOptionsScroll: {
+    maxHeight: 48,
+    marginTop: 14,
+  },
+  zikirOptionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  zikirOptionBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(100, 116, 139, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(100, 116, 139, 0.2)',
+  },
+  zikirOptionBtnActive: {
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    borderColor: '#F59E0B',
+  },
+  zikirOptionText: {
+    color: '#94A3B8',
+    fontSize: 13,
+    fontFamily: 'Nunito_600SemiBold',
+  },
+  zikirOptionTextActive: {
+    color: '#F59E0B',
+  },
+  zikirmatikCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectedZikirName: {
+    color: '#94A3B8',
+    fontSize: 16,
+    fontFamily: 'Nunito_600SemiBold',
+    marginBottom: 8,
+    letterSpacing: 1,
+  },
+  zikirCountText: {
+    fontSize: 72,
+    color: '#F59E0B',
+    fontFamily: 'Nunito_700Bold',
+  },
+  zikirProgressContainer: {
+    alignItems: 'center',
+    marginTop: 14,
+    width: '80%',
+  },
+  zikirProgressBar: {
+    width: '100%',
+    height: 6,
+    backgroundColor: '#334155',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  zikirProgressFill: {
+    height: '100%',
+    backgroundColor: '#F59E0B',
+    borderRadius: 3,
+  },
+  zikirProgressText: {
+    color: '#64748B',
+    fontSize: 13,
+    marginTop: 6,
+    fontFamily: 'Nunito_400Regular',
+  },
+  zikirmatikButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 20,
+    paddingHorizontal: 10,
+  },
+  zikirResetBtn: {
+    backgroundColor: '#334155',
+    paddingVertical: 15,
+    paddingHorizontal: 25,
+    borderRadius: 30,
+  },
+  zikirResetBtnText: {
+    color: '#CBD5E1',
+    fontSize: 16,
+    fontFamily: 'Nunito_600SemiBold',
+  },
+  zikirTapBtn: {
+    backgroundColor: '#F59E0B',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  zikirTapBtnComplete: {
+    backgroundColor: '#10B981',
+    shadowColor: '#10B981',
+  },
+  zikirTapBtnText: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontFamily: 'Nunito_700Bold',
   },
 });
