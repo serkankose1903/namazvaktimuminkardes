@@ -173,6 +173,7 @@ export default function App() {
   const [prayerTimes, setPrayerTimes] = useState(null);
   
   const [nextPrayer, setNextPrayer] = useState({ name: '', time: '' });
+  const [isCityLoaded, setIsCityLoaded] = useState(false);
 
   // iOS App Tracking Transparency (ATT) & AdMob Başlatma
   useEffect(() => {
@@ -270,7 +271,11 @@ export default function App() {
           setCountry(c);
           setCityDisplay(dn || name);
         }
-      } catch (e) { console.warn('Kaydedilmiş şehir okunamadı', e); }
+      } catch (e) { 
+        console.warn('Kaydedilmiş şehir okunamadı', e); 
+      } finally {
+        setIsCityLoaded(true);
+      }
     };
     loadSavedCity();
   }, []);
@@ -292,6 +297,8 @@ export default function App() {
 
   // API'den Namaz Vakitlerini Çek (Diyanet Metodu: 13)
   useEffect(() => {
+    if (!isCityLoaded) return; // Şehir bilgisi AsyncStorage'dan yüklenene kadar bekle
+
     let active = true;
 
     const fetchPrayerTimes = async () => {
@@ -323,13 +330,12 @@ export default function App() {
       }
     };
 
-    // Eğer AsyncStorage'dan henüz yükleme bitmediyse ve varsayılan Istanbul yerine başka bir şehir varsa çakışmayı önle
     fetchPrayerTimes();
 
     return () => {
       active = false;
     };
-  }, [city, country]);
+  }, [city, country, isCityLoaded]);
 
   // Bildirim izni al ve Android kanalını kur
   useEffect(() => {
